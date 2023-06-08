@@ -1,6 +1,7 @@
 import pandas as pd
 import numpy as np
 import os
+import glob
 import json
 from pathlib import Path
 from typing import Union, List
@@ -12,7 +13,7 @@ import config as con
 
 class Single_Sample:
     def __init__(self, batch_path_list: Union[List[str], List[Path]], n_simu_events: int, E_min: float, E_max: float,
-                raw_power_index: float, sample_area: float=(2000**2 + 285**2)*pi, sample_solid_angle: float=2*pi) -> None:
+                raw_power_index: float=con.raw_power_index, sample_area: float=con.sample_area, sample_solid_angle: float=con.sample_solid_angle) -> None:
         """
         Merge a set of sample from batch_path_list, and reweight samples.
         The batches should come from the same simulation configuration
@@ -40,8 +41,8 @@ class Single_Sample:
             detect_p = pd.json_normalize(particles, record_path='particles_at_detector', meta=['event_id']).set_index('event_id')
 
             # get events after cut
-            mask = (detect_p.x**2 + detect_p.y**2 < con.lateral_radius_cut**2)
-            detect_p = detect_p.loc[mask]
+            # mask = (detect_p.x**2 + detect_p.y**2 < con.lateral_radius_cut**2)
+            # detect_p = detect_p.loc[mask]
             indexes = detect_p.index.unique()
             primary = primary.loc[indexes]
 
@@ -58,7 +59,7 @@ class Single_Sample:
         merged_primary = pd.concat(merged_primary).set_index('showerId')
         merged_primary['e0'] = np.linalg.norm(merged_primary[['px','py','pz']], axis=1)
 
-        new_weight = self.get_new_weight(merged_primary.e0.to_numpy(), self.E_min, self.E_max, self.n_simu_events)
+        new_weight = Single_Sample.get_new_weight(merged_primary.e0.to_numpy(), self.E_min, self.E_max, self.n_simu_events)
         merged_primary['weight'] = new_weight
 
         merged_detect_p = pd.concat(merged_detect_p).set_index('showerId')
@@ -88,11 +89,17 @@ class Single_Sample:
             flux += phiz[i] * (energy/1e3)**yz[i] * ( 1 + (energy/Ez[i])**epc )**((yc-yz[i])/epc) / 1e3
         return flux
 
-    def get_new_weight(self, energy: Union[float, np.ndarray], E_min: float, E_max: float, n_events: int):
+    @classmethod
+    def get_new_weight(cls, energy: Union[float, np.ndarray], E_min: float, E_max: float, n_events: int, 
+                raw_power_index: float=con.raw_power_index, sample_area: float=con.sample_area, sample_solid_angle: float=con.sample_solid_angle):
         assert isinstance(energy, float) or isinstance(energy, np.ndarray), "energy must be a float or a NumPy ndarray"
-        raw_spectrum_norm_factor = 1. / quad(self.raw_power_index, E_min, E_max)[0]
-        weight = self.true_spectrum(energy) / ( energy**self.raw_power_index * raw_spectrum_norm_factor * n_events *
-                         self.sample_area * self.sample_solid_angle)
+        
+        def raw_spectrum(energy:float):
+            return pow(energy, raw_power_index)
+
+        raw_spectrum_norm_factor = 1. / quad(raw_spectrum, E_min, E_max)[0]
+        weight = cls.true_spectrum(energy) / ( energy**raw_power_index * raw_spectrum_norm_factor * n_events *
+                         sample_area * sample_solid_angle)
         return  weight
     
 
@@ -106,8 +113,9 @@ class Samples:
         """
         self.sample_list: List[Single_Sample] = []
         
-    def add_sample(self, batch_path_list: Union[List[str], List[Path]], n_simu_events: int, E_min: float, E_max: float):
-        self.sample_list.append(Single_Sample(batch_path_list, n_simu_events, E_min, E_max))
+    def add_sample(self, batch_path_list: Union[List[str], List[Path]], n_simu_events: int, E_min: float, E_max: float,
+                raw_power_index: float=con.raw_power_index, sample_area: float=con.sample_area, sample_solid_angle: float=con.sample_solid_angle):
+        self.sample_list.append(Single_Sample(batch_path_list, n_simu_events, E_min, E_max, raw_power_index, sample_area, sample_solid_angle))
     
     def get_sample_list(self):
         return self.sample_list
@@ -139,7 +147,14 @@ class Samples:
             detect_p['showerId'] = detect_p.showerId.map(index_to_showerId)
             reweighted_primary.append(primary)
             reweighted_detect_p.append(detect_p)
-        self._primary, self._detect_p = reweighted_primary, reweighted_detect_p
+        self._primary, self._detect_p = pd.concat(reweighted_primary).set_index('showerId'), pd.concat(reweighted_detect_p).set_index('showerId')
+
+    def save_samples(self, target_dir: Union[str, Path]):
+        if not (hasattr(self, "_primary") or hasattr(self, "_detect_p")):
+            self.merge_sample_list()
+        self._primary.to_csv(Path(target_dir) / 'primaries.csv', index_label='showerId')
+        self._detect_p.to_csv(Path(target_dir) / 'detected_particles.csv', index_label='showerId')
+
 
     def __getitem__(self, index):
         return self.sample_list[index]
@@ -149,3 +164,17 @@ class Samples:
 
 
 
+# example
+if __name__=='__main__':
+    sample_path_prefix = "/lustre/collider/mocen/project/hailing/data/atm_muon/dataStore/sealevel/"
+    con.raw_power_index = -1
+    con.sample_area = pi * 400**2
+
+    samples = Samples()
+
+    # load samples
+    batch_path = glob.glob(sample_path_prefix + "test/batch*")
+    samples.add_sample(batch_path_list=batch_path, n_simu_events=2e5, E_min=1e2, E_max=1e3)
+    samples.save_samples('./example')
+    print(samples.primary)
+    print(samples.detect_p)
