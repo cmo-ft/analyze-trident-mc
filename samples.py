@@ -98,8 +98,7 @@ class Single_Sample:
             return pow(energy, raw_power_index)
 
         raw_spectrum_norm_factor = 1. / quad(raw_spectrum, E_min, E_max)[0]
-        weight = cls.true_spectrum(energy) / ( energy**raw_power_index * raw_spectrum_norm_factor * n_events *
-                         sample_area * sample_solid_angle)
+        weight = cls.true_spectrum(energy) / ( energy**raw_power_index * raw_spectrum_norm_factor * n_events) * sample_area * sample_solid_angle
         return  weight
     
 

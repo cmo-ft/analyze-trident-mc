@@ -59,6 +59,18 @@ def intensity_sea_level(Emu: Union[float, np.array], zenith: float):
     cs = cos(zenith)
     return 0.14e-4 * Emu**-2.7 * ( 1/(1 + 1.1*Emu*cs/115) + 0.054/(1 + 1.1*Emu*cs/850))
 
+def parameterized_vertical_muon_energy_spectrum_with_depth(Emu: Union[float, np.array], depth:float, zenith=0):
+    # Emu [GeV], depth [km], zenith [rad]
+    from math import exp, cos, log
+    X = depth / cos(zenith)
+    beta, y0, y1, ep0a, ep0b, ep1a, ep1b = 0.42, -0.232, 3.961, 0.0304, 0.359, -0.0077, 0.659
+    ep1 = ep1a * depth + ep1b
+    ep0 = ep0a * exp(ep0b * depth)
+    ep = ep0 / cos(zenith) + ep1
+    y = y0 * log(depth) + y1
+    G = 2.3 * (y-1) * ep**(y-1) * exp((y-1)*beta*X) * (1-exp(-beta*X))**(y-1)
+    return G * Emu/1e3 * exp(beta*X*(1-y)) * (Emu/1e3 + ep * (1-exp(-beta*X)))**(-y)
+
 
 if __name__=='__main__':
     # get samples
