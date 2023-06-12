@@ -15,7 +15,7 @@ import config as con
 from samples import Single_Sample, Samples
 
 def draw_energy_spectrum(data: pd.DataFrame, weight_scale_factor: float, 
-                    bins=50, line_label='simulation', xlabel=r'E [GeV]', xlim=(1e2,1e6), 
+                    bins=30, line_label='simulation', xlabel=r'E [GeV]', xlim=(1e2,1e6), 
                     ylabel=r'Intensity $[m^{-2}s^{-1}sr^{-1}GeV^{-1}]$',
                     title='energy spectrum', ax=None, fig=None,
                     ):
@@ -39,7 +39,7 @@ def draw_energy_spectrum(data: pd.DataFrame, weight_scale_factor: float,
     # plot
     if ax is None:
         fig, ax = plt.subplots(figsize=(5, 4), dpi=400)
-    ax.errorbar(center_energy, hist, yerr=y_err, fmt='o-', label=line_label)
+    ax.errorbar(center_energy, hist, yerr=y_err, fmt='o-', label=line_label, markersize=3)
     ax.set_xscale('log')
     ax.set_xlabel(xlabel)
     ax.set_xlim(xlim)
@@ -57,7 +57,39 @@ def intensity_sea_level(Emu: Union[float, np.array], zenith: float):
     return: dN/(dE dOmega dS dt) with unit 1/(m2 s sr GeV)
     """
     cs = cos(zenith)
-    return 0.14e-4 * Emu**-2.7 * ( 1/(1 + 1.1*Emu*cs/115) + 0.054/(1 + 1.1*Emu*cs/850))
+    return 0.14e4 * Emu**-2.7 * ( 1/(1 + 1.1*Emu*cs/115) + 0.054/(1 + 1.1*Emu*cs/850))
+
+def MUPAGE_flux(m: int, h: float, theta: float):
+    """
+    m: number of muons in a muon bundle
+    h: depth of interests: [km]
+    theta: muon direction
+    """
+    from math import cos, exp
+    k0a = 7.2e-3
+    k0b = -1.927
+    k1a = -0.581
+    k1b = 0.034
+    v0a = 7.71e-2
+    v0b = 0.524
+    v0c = 2.068
+    v1a = 0.03
+    v1b = 0.47
+
+    #Lambda
+    Lambda = 0.
+
+    # K(h, theta)    
+    k0 = k0a * h**k0b
+    k1 = k1a * h + k1b
+    k = k0*cos(theta) * exp( k1/cos(theta) ) # = flux of m=1 muon bundle with theta at h. unit: m-2s-1sr-1
+
+    # \nu(h, theta)
+    v0 = v0a*h**2 + v0b * h + v0c
+    v1 = v1a * exp(v1b*h)
+    v = v0 * exp(v1/cos(theta))
+    return k / m**v
+
 
 def parameterized_vertical_muon_energy_spectrum_with_depth(Emu: Union[float, np.array], depth:float, zenith=0):
     # Emu [GeV], depth [km], zenith [rad]
