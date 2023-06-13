@@ -77,22 +77,8 @@ class Single_Sample:
         return pow(energy, self.raw_power_index)
 
     @staticmethod
-    # def true_spectrum(energy):
-    #     # treat heavy nucleon as one proton with same energy
-    #     assert isinstance(energy, float) or isinstance(energy, np.ndarray), "x must be a float or a NumPy ndarray"
-    #     # input energy unit: GeV
-    #     yc, epc = -4.7, 1.87
-    #     # gammaz list: p, He, CNO, Mg, Fe
-    #     yz = [-2.71, -2.64, -2.68, -2.67, -2.58]
-    #     phiz = [8.73e-2, 5.71e-2, 3.24e-2, 3.16e-2, 2.18e-2]
-    #     Ez = [4.5e6, 9e6, 3.06e7, 6.48e7, 1.17e8]
-    #     Az = [1, 4, 14, 24, 56]
-    #     flux = 0
-    #     for i in range(len(yz)):
-    #         flux += phiz[i] * (energy/1e3)**yz[i] * ( 1 + (energy/Ez[i])**epc )**((yc-yz[i])/epc) / 1e3
-    #     return flux
     def true_spectrum(energy):
-        # treat heavy nucleon as A protons with energy E/A
+        # treat heavy nucleon as one proton with same energy
         assert isinstance(energy, float) or isinstance(energy, np.ndarray), "x must be a float or a NumPy ndarray"
         # input energy unit: GeV
         yc, epc = -4.7, 1.87
@@ -103,9 +89,23 @@ class Single_Sample:
         Az = [1, 4, 14, 24, 56]
         flux = 0
         for i in range(len(yz)):
-            e0 = energy * Az[i]
-            flux += Az[i] * phiz[i] * ( e0 /1e3)**yz[i] * ( 1 + (e0/Ez[i])**epc )**((yc-yz[i])/epc) / 1e3
+            flux += phiz[i] * (energy/1e3)**yz[i] * ( 1 + (energy/Ez[i])**epc )**((yc-yz[i])/epc) / 1e3
         return flux
+    # def true_spectrum(energy):
+    #     # treat heavy nucleon as A protons with energy E/A
+    #     assert isinstance(energy, float) or isinstance(energy, np.ndarray), "x must be a float or a NumPy ndarray"
+    #     # input energy unit: GeV
+    #     yc, epc = -4.7, 1.87
+    #     # gammaz list: p, He, CNO, Mg, Fe
+    #     yz = [-2.71, -2.64, -2.68, -2.67, -2.58]
+    #     phiz = [8.73e-2, 5.71e-2, 3.24e-2, 3.16e-2, 2.18e-2]
+    #     Ez = [4.5e6, 9e6, 3.06e7, 6.48e7, 1.17e8]
+    #     Az = [1, 4, 14, 24, 56]
+    #     flux = 0
+    #     for i in range(len(yz)):
+    #         e0 = energy * Az[i]
+    #         flux += Az[i] * phiz[i] * ( e0 /1e3)**yz[i] * ( 1 + (e0/Ez[i])**epc )**((yc-yz[i])/epc) / 1e3
+    #     return flux
 
     @classmethod
     def get_new_weight(cls, energy: Union[float, np.ndarray], E_min: float, E_max: float, n_events: int, 
