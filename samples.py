@@ -1,5 +1,6 @@
 import pandas as pd
 import numpy as np
+import uproot as ur
 import os
 import glob
 import json
@@ -13,8 +14,10 @@ import gc
 import config as con
 
 class Single_Sample:
-    def __init__(self, batch_path_list: Union[List[str], List[Path]], n_simu_events: int, E_min: float, E_max: float, particle_type: str='',
-                raw_power_index: float=con.raw_power_index, sample_area: float=con.sample_area, sample_solid_angle: float=con.sample_solid_angle) -> None:
+    def __init__(self, batch_path_list: Union[List[str], List[Path]],
+                 n_simu_events: int, E_min: float, E_max: float, particle_type: str='',
+                 raw_power_index: float=con.raw_power_index, sample_area: float=con.sample_area,
+                 sample_solid_angle: float=con.sample_solid_angle, root_file_suffix: str=None) -> None:
         """
         Merge a set of sample from batch_path_list, and reweight samples.
         The batches should come from the same simulation configuration
@@ -30,14 +33,18 @@ class Single_Sample:
         self.n_simu_events = n_simu_events
         self.E_min = E_min
         self.E_max = E_max
+        self.root_file_suffix = root_file_suffix
+        self.pmthits = None
         self.primary, self.detect_p = None, None
         self.get_data()
         
 
     def get_data(self):        
         merged_primary, merged_detect_p = [], []
+        merged_pmthits = []
         global_shower_id = 0
         for batch in self.batch_path_list:
+            print(batch)
             with open(Path(batch) / con.mcevents_suffix) as f:
                 particles = json.load(f)
 
@@ -59,6 +66,14 @@ class Single_Sample:
             detect_p['showerId'] = detect_p.index.map(index_to_showerId)
             primary['showerId'] = primary.index.map(index_to_showerId)
 
+            # get pmthits
+            if self.root_file_suffix != None:
+                pmthits = ur.open(os.path.join(Path(batch) / self.root_file_suffix))['PmtHit'].arrays(library='pd').droplevel(1)
+                # quantum efficiency
+                pmthits = pmthits.loc[np.random.rand(len(pmthits))<0.3]
+                pmthits['showerId'] = pmthits.index.map(index_to_showerId)
+                merged_pmthits.append(pmthits)
+
             merged_primary.append(primary)
             merged_detect_p.append(detect_p)
         
@@ -75,6 +90,11 @@ class Single_Sample:
 
         self.primary, self.detect_p = merged_primary, merged_detect_p
 
+        # pmthits
+        if self.root_file_suffix != None:
+            merged_pmthits = pd.concat(merged_pmthits).set_index('showerId')
+            merged_pmthits['weight'] = merged_primary['weight']
+            self.pmthits = merged_pmthits
 
     def raw_spectrum(self, energy:float):
         # energy spectrum used during simulation
@@ -134,16 +154,22 @@ class Single_Sample:
 
 
 class Samples:
-    def __init__(self, ) -> None:
+    def __init__(self, root_file_suffix: str=None,) -> None:
         """
         Get a list of samples with different simulation configuration.
         Samples should be added from cls.add_sample
+        :param root_file_suffix: the path of data.root relative to each batch. e.g.:detectorResponse/data.root
         """
         self.sample_list: List[Single_Sample] = []
+        self.root_file_suffix = root_file_suffix
         
-    def add_sample(self, batch_path_list: Union[List[str], List[Path]], n_simu_events: int, E_min: float, E_max: float, particle_type: str='',
-                raw_power_index: float=con.raw_power_index, sample_area: float=con.sample_area, sample_solid_angle: float=con.sample_solid_angle):
-        self.sample_list.append(Single_Sample(batch_path_list, n_simu_events, E_min, E_max, particle_type, raw_power_index, sample_area, sample_solid_angle))
+    def add_sample(self, batch_path_list: Union[List[str], List[Path]],
+                   n_simu_events: int, E_min: float, E_max: float, particle_type: str='',
+                   raw_power_index: float=con.raw_power_index, sample_area: float=con.sample_area,
+                   sample_solid_angle: float=con.sample_solid_angle):
+        self.sample_list.append(Single_Sample(batch_path_list, n_simu_events, E_min, E_max,
+                                              particle_type, raw_power_index, sample_area,
+                                              sample_solid_angle, root_file_suffix=self.root_file_suffix))
     
     def get_sample_list(self):
         return self.sample_list
@@ -177,12 +203,31 @@ class Samples:
             reweighted_detect_p.append(detect_p)
         self._primary, self._detect_p = pd.concat(reweighted_primary).set_index('showerId'), pd.concat(reweighted_detect_p).set_index('showerId')
 
+    def merge_pmt_hits(self):
+        global_shower_id = 0
+        reweighted_pmthits = []
+        for sample in self.sample_list:
+            pmthits = sample.pmthits.copy().reset_index(0)
+
+            indexes = pmthits.showerId
+            # reassign index
+            index_to_showerId = {indexes[i]: i+global_shower_id for i in range(len(indexes))}
+            global_shower_id += len(indexes)
+
+            pmthits['showerId'] = pmthits.showerId.map(index_to_showerId)
+            reweighted_pmthits.append(pmthits)
+        self._pmthits = pd.concat(reweighted_pmthits).set_index('showerId')
+
     def save_samples(self, target_dir: Union[str, Path]):
         if not (hasattr(self, "_primary") or hasattr(self, "_detect_p")):
             self.merge_sample_list()
         self._primary.to_csv(Path(target_dir) / 'primaries.csv', index_label='showerId')
         self._detect_p.to_csv(Path(target_dir) / 'detected_particles.csv', index_label='showerId')
 
+        if (self.root_file_suffix!=None):
+            if (not hasattr(self, "_pmthits")):
+                self.merge_pmt_hits()
+            self._pmthits.to_csv(Path(target_dir) / 'pmthits.csv', index_label='showerId')
 
     def __getitem__(self, index):
         return self.sample_list[index]
