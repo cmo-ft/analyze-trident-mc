@@ -65,7 +65,8 @@ class Single_Sample:
         merged_primary = pd.concat(merged_primary).set_index('showerId')
         merged_primary['e0'] = np.linalg.norm(merged_primary[['px','py','pz']], axis=1)
 
-        new_weight = Single_Sample.get_new_weight(merged_primary.e0.to_numpy(), self.E_min, self.E_max, self.n_simu_events)
+        new_weight = Single_Sample.get_new_weight(merged_primary.e0.to_numpy(), self.E_min, self.E_max, self.n_simu_events, \
+            particle_type=self.particle_type)
         merged_primary['weight'] = new_weight
 
         merged_detect_p = pd.concat(merged_detect_p).set_index('showerId')
@@ -94,7 +95,7 @@ class Single_Sample:
         flux = 0
         if particle_type !=  '':
             assert particle_type in all_particle_type
-            idx = particle_type.index(all_particle_type)
+            idx = all_particle_type.index(particle_type)
             flux = phiz[idx] * (energy/1e3)**yz[idx] * ( 1 + (energy/Ez[idx])**epc )**((yc-yz[idx])/epc) / 1e3
         else:
             for i in range(len(yz)):
@@ -117,15 +118,16 @@ class Single_Sample:
     #     return flux
 
     @classmethod
-    def get_new_weight(cls, energy: Union[float, np.ndarray], E_min: float, E_max: float, n_events: int, 
-                raw_power_index: float=con.raw_power_index, sample_area: float=con.sample_area, sample_solid_angle: float=con.sample_solid_angle):
+    def get_new_weight(cls, energy: Union[float, np.ndarray], E_min: float, E_max: float, n_events: int,
+                raw_power_index: float=con.raw_power_index, sample_area: float=con.sample_area, sample_solid_angle: float=con.sample_solid_angle, \
+                particle_type:str=''):
         assert isinstance(energy, float) or isinstance(energy, np.ndarray), "energy must be a float or a NumPy ndarray"
         
         def raw_spectrum(energy:float):
             return pow(energy, raw_power_index)
 
         raw_spectrum_norm_factor = 1. / quad(raw_spectrum, E_min, E_max)[0]
-        weight = cls.true_spectrum(energy) / ( energy**raw_power_index * raw_spectrum_norm_factor * n_events) * sample_area * sample_solid_angle
+        weight = cls.true_spectrum(energy, particle_type) / ( energy**raw_power_index * raw_spectrum_norm_factor * n_events) * sample_area * sample_solid_angle
         return  weight
     
 
