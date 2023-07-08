@@ -13,12 +13,15 @@ import gc
 import config as con
 
 class Single_Sample:
-    def __init__(self, batch_path_list: Union[List[str], List[Path]], n_simu_events: int, E_min: float, E_max: float,
+    def __init__(self, batch_path_list: Union[List[str], List[Path]], n_simu_events: int, E_min: float, E_max: float, particle_type: str='',
                 raw_power_index: float=con.raw_power_index, sample_area: float=con.sample_area, sample_solid_angle: float=con.sample_solid_angle) -> None:
         """
         Merge a set of sample from batch_path_list, and reweight samples.
         The batches should come from the same simulation configuration
         """
+        if particle_type !=  '':
+            assert particle_type in ['p', 'He', 'CNO', 'Mg', 'Fe']
+        self.particle_type = particle_type
         self.raw_power_index = raw_power_index
         self.sample_area = sample_area
         self.sample_solid_angle = sample_solid_angle
@@ -77,7 +80,7 @@ class Single_Sample:
         return pow(energy, self.raw_power_index)
 
     @staticmethod
-    def true_spectrum(energy):
+    def true_spectrum(energy, particle_type:str=''):
         # treat heavy nucleon as one proton with same energy
         assert isinstance(energy, float) or isinstance(energy, np.ndarray), "x must be a float or a NumPy ndarray"
         # input energy unit: GeV
@@ -87,9 +90,15 @@ class Single_Sample:
         phiz = [8.73e-2, 5.71e-2, 3.24e-2, 3.16e-2, 2.18e-2]
         Ez = [4.5e6, 9e6, 3.06e7, 6.48e7, 1.17e8]
         Az = [1, 4, 14, 24, 56]
+        all_particle_type = ['p', 'He', 'CNO', 'Mg', 'Fe']
         flux = 0
-        for i in range(len(yz)):
-            flux += phiz[i] * (energy/1e3)**yz[i] * ( 1 + (energy/Ez[i])**epc )**((yc-yz[i])/epc) / 1e3
+        if particle_type !=  '':
+            assert particle_type in all_particle_type
+            idx = particle_type.index(all_particle_type)
+            flux = phiz[idx] * (energy/1e3)**yz[idx] * ( 1 + (energy/Ez[idx])**epc )**((yc-yz[idx])/epc) / 1e3
+        else:
+            for i in range(len(yz)):
+                flux += phiz[i] * (energy/1e3)**yz[i] * ( 1 + (energy/Ez[i])**epc )**((yc-yz[i])/epc) / 1e3
         return flux
     # def true_spectrum(energy):
     #     # treat heavy nucleon as A protons with energy E/A
@@ -130,9 +139,9 @@ class Samples:
         """
         self.sample_list: List[Single_Sample] = []
         
-    def add_sample(self, batch_path_list: Union[List[str], List[Path]], n_simu_events: int, E_min: float, E_max: float,
+    def add_sample(self, batch_path_list: Union[List[str], List[Path]], n_simu_events: int, E_min: float, E_max: float, particle_type: str='',
                 raw_power_index: float=con.raw_power_index, sample_area: float=con.sample_area, sample_solid_angle: float=con.sample_solid_angle):
-        self.sample_list.append(Single_Sample(batch_path_list, n_simu_events, E_min, E_max, raw_power_index, sample_area, sample_solid_angle))
+        self.sample_list.append(Single_Sample(batch_path_list, n_simu_events, E_min, E_max, particle_type, raw_power_index, sample_area, sample_solid_angle))
     
     def get_sample_list(self):
         return self.sample_list
